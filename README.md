@@ -1,2 +1,2 @@
 # CAMISourmash
-Docker container for sourmash (and format conversion)
+Docker container for sourmash (and format conversion).
