@@ -1,0 +1,77 @@
+## here you should call the task(s) that you want to run as default using the following syntax (preferable to a symbolic link)
+# . "$DCKR_TASKS"/mytask1
+#echo 'Default task is empty' 1>&2
+#check if list of input files exist
+if [ ! -f "$CONT_CONTIGS_FILE_LISTING" ]
+then
+	echo "List of input files not given. Please include a list of input files at: $CONT_CONTIGS_FILE_LISTING" 1>&2
+	exit 0
+fi
+
+#check if Data folder is present
+if [ ! -d /dckr/mnt/input ]
+then
+	echo "Data directory missing. Hint, include the following command when starting docker: -v /path/to/local/Data:/dckr/mnt/input:ro" 1>&2
+	exit 0
+fi
+
+# Create the training sketches
+mkdir -p /dckr/mnt/output/Sketches
+cat $CONT_CONTIGS_FILE_LISTING | xargs -I{} -P 0 sourmash compute --dna -f -k $KSIZE --scaled $SCALED --track-abundance -o /dckr/mnt/output/Sketches/{}.k${KSIZE}.sig {}
+
+# Make an index to search with (basically a tree of bloom filters)
+sourmash index --traverse-directory -k $KSIZE index /dckr/mnt/output/Sketches
+
+#############################################################3
+# The following is old stuff that I may need to pull from
+: <<'END'
+
+
+#check if names, nodes, and gi_taxid_nucl.dmp exist
+if [ ! -f /dckr/mnt/input/taxonomy.tar.gz ]
+then
+	echo "Missing taxonomy.tar.gz from input folder. The file taxonomy.tar.gz must include names.dmp, nodes.dmp, and gi_taxid_nucl.dmp"
+	exit 0
+fi
+
+#Create output
+mkdir -p /dckr/mnt/output/Database
+mkdir -p /dckr/mnt/output/Database/taxonomy
+mkdir -p /dckr/mnt/output/Database/library
+cd /dckr/mnt/output/Database/taxonomy
+tar -xzf /dckr/mnt/input/taxonomy.tar.gz
+if [ ! -f names.dmp ]
+then
+	echo "Missing names.dmp from taxonomy.tar.gz"
+	exit 0
+fi
+if [ ! -f nodes.dmp ]
+then
+	echo "Missing nodes.dmp from taxonomy.tar.gz"
+	exit 0
+fi
+if [ ! -f gi_taxid_nucl.dmp ]
+then
+	echo "Missing gi_taxid_nucl.dmp from taxonomy.tar.gz"
+	exit 0
+fi
+#cp /dckr/mnt/input/names.dmp /dckr/mnt/output/Database/taxonomy
+#cp /dckr/mnt/input/nodes.dmp /dckr/mnt/output/Database/taxonomy
+#cp /dckr/mnt/input/gi_taxid_nucl.dmp /dckr/mnt/output/Database/taxonomy
+
+#Add all files to Kraken training database
+cat $CONT_CONTIGS_FILE_LISTING | xargs -I{} /kraken-0.10.5-beta/./kraken-build --add-to-library /dckr/mnt/input/{} --db /dckr/mnt/output/Database
+
+#Build the Kraken database
+/kraken-0.10.5-beta/./kraken-build --build --db /dckr/mnt/output/Database --threads ${DCKR_THREADS} 
+#--kmer-len 10 --minimizer-len 5 --work-on-disk
+
+#Build the taxonomy
+cd /tmp
+#tar -czf NamesAndNodes.tar.gz /dckr/mnt/input/names.dmp /dckr/mnt/input/nodes.dmp
+#python /usr/local/sbin/generate_taxonomy_taxid.py --ncbi_taxdump file:///temp/NamesAndNodes.tar.gz --output taxonomy_taxID.txt
+python /usr/local/sbin/generate_taxonomy_taxid.py --ncbi_taxdump file:///dckr/mnt/input/taxonomy.tar.gz --output taxonomy_taxID.txt
+cut -f2 /dckr/mnt/output/Database/seqid2taxid.map | sort -u | LC_ALL=C xargs -I{} grep -m1 "^{}_" taxonomy_taxID.txt > /dckr/mnt/output/Database/taxonomy_taxID_Kraken.txt
+
+END
+###############################################################3
