@@ -5,22 +5,22 @@
 if [ ! -f "$CONT_CONTIGS_FILE_LISTING" ]
 then
 	echo "List of input files not given. Please include a list of input files at: $CONT_CONTIGS_FILE_LISTING" 1>&2
-	exit 0
+	exit 1
 fi
 
 #check if Data folder is present
 if [ ! -d /dckr/mnt/input ]
 then
 	echo "Data directory missing. Hint, include the following command when starting docker: -v /path/to/local/Data:/dckr/mnt/input:ro" 1>&2
-	exit 0
+	exit 1
 fi
 
 # Create the training sketches
-mkdir -p /dckr/mnt/output/Sketches
-cat $CONT_CONTIGS_FILE_LISTING | xargs -I{} -P 0 sourmash compute --dna -f -k $KSIZE --scaled $SCALED --track-abundance -o /dckr/mnt/output/Sketches/{}.k${KSIZE}.sig {}
+mkdir -p /dckr/mnt/output/Database
+cat $CONT_CONTIGS_FILE_LISTING | xargs -I{} -P 0 sourmash compute --dna -f -k $KSIZE --scaled $SCALED --track-abundance -o /dckr/mnt/output/Database/{}.k${KSIZE}.sig {}
 
 # Make an index to search with (basically a tree of bloom filters)
-sourmash index --traverse-directory -k $KSIZE index /dckr/mnt/output/Sketches
+sourmash index --traverse-directory -k $KSIZE index /dckr/mnt/output/Database/index
 
 #############################################################3
 # The following is old stuff that I may need to pull from
